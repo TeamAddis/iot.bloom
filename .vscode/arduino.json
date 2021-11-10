@@ -1,0 +1,6 @@
+{
+    "board": "arduino:samd:mkrwifi1010",
+    "port": "COM4",
+    "sketch": "celebi.ino",
+    "programmer": "arduino:atmel_ice"
+}
