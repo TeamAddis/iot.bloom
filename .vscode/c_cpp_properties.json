@@ -25,6 +25,8 @@
                 "C:\\Users\\andrew\\AppData\\Local\\Arduino15\\packages\\arduino\\hardware\\samd\\1.8.11\\cores\\arduino",
                 "C:\\Users\\andrew\\AppData\\Local\\Arduino15\\packages\\arduino\\hardware\\samd\\1.8.11\\variants\\mkrwifi1010",
                 "C:\\Users\\andrew\\Documents\\Arduino\\libraries\\RTCZero\\src",
+                "C:\\Users\\andrew\\Documents\\Arduino\\libraries\\WiFiNINA\\src",
+                "C:\\Users\\andrew\\AppData\\Local\\Arduino15\\packages\\arduino\\hardware\\samd\\1.8.11\\libraries\\SPI",
                 "c:\\users\\andrew\\appdata\\local\\arduino15\\packages\\arduino\\tools\\arm-none-eabi-gcc\\7-2017q4\\arm-none-eabi\\include\\c++\\7.2.1",
                 "c:\\users\\andrew\\appdata\\local\\arduino15\\packages\\arduino\\tools\\arm-none-eabi-gcc\\7-2017q4\\arm-none-eabi\\include\\c++\\7.2.1\\arm-none-eabi",
                 "c:\\users\\andrew\\appdata\\local\\arduino15\\packages\\arduino\\tools\\arm-none-eabi-gcc\\7-2017q4\\arm-none-eabi\\include\\c++\\7.2.1\\backward",
