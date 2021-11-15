@@ -18,7 +18,7 @@
  * Pump variables
  */
 bool pumpIsActive = false;
-// #define PUMP_PIN D6
+#define PUMP_PIN 6
 
 /* 
  * RTC (Real time clock) variables
@@ -69,7 +69,7 @@ void setup() {
         Serial.println();
     }
 
-    pinMode(LED_BUILTIN, OUTPUT);
+    pinMode(PUMP_PIN, OUTPUT);
 
     // Set the test alarm
     testAlarm(2);
@@ -97,12 +97,12 @@ void togglePump() {
     if (pumpIsActive) {
         // Turn off the pump
         Serial.println("Turning Pump off");
-        digitalWrite(LED_BUILTIN, LOW);
+        digitalWrite(PUMP_PIN, LOW);
         pumpIsActive = !pumpIsActive;
     } else {
         // Turn on the pump
         Serial.println("Turning Pump on");
-        digitalWrite(LED_BUILTIN, HIGH);
+        digitalWrite(PUMP_PIN, HIGH);
         pumpIsActive = !pumpIsActive;
 
         // Set alarm for turning off the pump
