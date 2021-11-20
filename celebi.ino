@@ -11,7 +11,10 @@
  * Includes
  */
 #include <RTCZero.h>
+#include <SPI.h>
+#include <ArduinoJson.h>
 #include <WiFiNINA.h>
+#include <ArduinoHttpServer.h>
 #include "network_secrets.h"
 
 /* 
@@ -24,6 +27,7 @@ bool pumpIsActive = false;
  * RTC (Real time clock) variables
  */
 RTCZero rtc;
+const int GMT = 9;
 
 /* 
  * Wifi variables
@@ -32,8 +36,8 @@ char ssid[] = SECRET_SSID;
 char pass[] = SECRET_PASS;
 
 int status = WL_IDLE_STATUS;
+WiFiServer server(80);
 
-const int GMT = 9;
 
 /* 
  * Setup function
@@ -48,36 +52,46 @@ void setup() {
     if (!setupWifi()) {while(true);}
 
     // Configure the RTC
-    rtc.begin();
-    
-    unsigned long epoch = 0;
-    int numberOfTries = 0, maxTries = 6;
+    setupRTC(rtc);
 
-    do {
-        epoch = WiFi.getTime();
-        numberOfTries++;
-    } while ((epoch == 0) && (numberOfTries < maxTries));
-
-    if (numberOfTries == maxTries) {
-        Serial.println("NTP unreachable!!");
-        while(1);
-    } else {
-        Serial.print("Time received: ");
-        Serial.println(epoch);
-
-        rtc.setEpoch(epoch);
-        Serial.println();
-    }
-
+    // Setup the pump pins.
     pinMode(PUMP_PIN, OUTPUT);
-
-    // Set the test alarm
-    testAlarm(2);
 }
 
-void testAlarm(byte secondsFromNow) {
-    byte newSeconds = rtc.getSeconds() + secondsFromNow;
-    setAlarm(rtc.getHours(), rtc.getMinutes(), newSeconds);
+/* 
+ * Function that will set an alarm for duration in the future measured in seconds.
+ */
+void setAutoOffAlarmSeconds(byte secondsFromNow) {
+    byte seconds = rtc.getSeconds() + secondsFromNow;
+    byte minutes = rtc.getMinutes();
+    byte hours = rtc.getHours();
+    if (seconds >= 60) {
+        seconds -= 60;
+        minutes++;
+        if (minutes >= 60) {
+            minutes -= 60;
+            if (hours == 24) {
+                hours = 0;
+            }
+        }
+    }
+    setAlarm(hours, minutes, seconds);
+}
+
+/* 
+ * Function that will set an alarm for duration in the future measured in minutes.
+ */
+void setAutoOffAlarmMinutes(byte minutesFromNow) {
+    byte hours = rtc.getHours();
+    byte minutes = rtc.getMinutes() + minutesFromNow;
+    if (minutes >= 60) {
+        minutes -= 60;
+        hours++;
+        if (hours == 24) {
+            hours = 0;
+        }
+    }
+    setAlarm(hours, minutes, rtc.getSeconds());
 }
 
 /* 
@@ -87,7 +101,12 @@ void testAlarm(byte secondsFromNow) {
  * 
  */
 void loop() {
-    
+    WiFiClient client = server.available();
+    // WiFiSSLClient client = server.available();
+
+    if (client) {
+        communicateWithClient(client);
+    }
 }
 
 /* 
@@ -106,8 +125,22 @@ void togglePump() {
         pumpIsActive = !pumpIsActive;
 
         // Set alarm for turning off the pump
-        testAlarm(10);
+        setAutoOffAlarmSeconds(10);
     }
+}
+
+// Turn on the pump
+void setPumpOn() {
+    Serial.println("Turning Pump on");
+    digitalWrite(PUMP_PIN, HIGH);
+    pumpIsActive = !pumpIsActive;
+}
+
+// Turn off the pump
+void setPumpOff() {
+    Serial.println("Turning Pump off");
+    digitalWrite(PUMP_PIN, LOW);
+    pumpIsActive = !pumpIsActive;
 }
 
 /* 
@@ -146,5 +179,76 @@ bool setupWifi() {
         delay(10000);
     }
 
+    server.begin();
+
     return true;
+}
+
+/* 
+ * Setup the RTC
+ */
+void setupRTC(RTCZero rtc) {
+    rtc.begin();
+    
+    unsigned long epoch = 0;
+    int numberOfTries = 0, maxTries = 6;
+
+    do {
+        epoch = WiFi.getTime();
+        numberOfTries++;
+    } while ((epoch == 0) && (numberOfTries < maxTries));
+
+    if (numberOfTries == maxTries) {
+        Serial.println("NTP unreachable!!");
+        while(1);
+    } else {
+        Serial.print("Time received: ");
+        Serial.println(epoch);
+
+        rtc.setEpoch(epoch);
+        Serial.println();
+    }
+}
+
+/* 
+ * Read from a connected client
+ */
+void communicateWithClient(WiFiClient client) {
+    if (client.connected()) {
+        ArduinoHttpServer::StreamHttpRequest<1024> request(client);
+        if (request.readRequest()) {
+            // Retrieve HTTP method.
+            // E.g.: GET / PUT / HEAD / DELETE / POST
+            ArduinoHttpServer::Method method( ArduinoHttpServer::Method::Invalid );
+            method = request.getMethod();
+
+            String endpoint = request.getResource().toString();
+
+            if (endpoint == "/m") {
+                Serial.println(request.getBody());
+
+                DynamicJsonDocument data(24);
+                deserializeJson(data, request.getBody());
+
+                if (data["isOn"]) {
+                    setPumpOn();
+                } else {
+                    setPumpOff();
+                }
+            } else if (endpoint == "/a") {
+                Serial.println(request.getBody());
+
+                DynamicJsonDocument data(24);
+                deserializeJson(data, request.getBody());
+
+                int hours = data["hours"];
+                int minutes = data["minutes"];
+
+                setAlarm(hours, minutes, 0);
+            }
+        }
+    }
+
+    client.stop();
+    Serial.println("client disconnected");
 }
