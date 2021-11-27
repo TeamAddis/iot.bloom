@@ -133,14 +133,14 @@ void togglePump() {
 void setPumpOn() {
     Serial.println("Turning Pump on");
     digitalWrite(PUMP_PIN, HIGH);
-    pumpIsActive = !pumpIsActive;
+    pumpIsActive = true;
 }
 
 // Turn off the pump
 void setPumpOff() {
     Serial.println("Turning Pump off");
     digitalWrite(PUMP_PIN, LOW);
-    pumpIsActive = !pumpIsActive;
+    pumpIsActive = false;
 }
 
 /* 
@@ -211,40 +211,66 @@ void setupRTC(RTCZero rtc) {
 }
 
 /* 
+* Send the connected client the server status
+ */
+void sendStatusToClient(WiFiClient client) {
+    StaticJsonDocument<200> doc;
+    String data;
+    doc["pumpIsActive"] = pumpIsActive;
+
+    serializeJsonPretty(doc, data);
+
+    Serial.println(data);
+
+    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
+    httpReply.send(data);
+}
+
+/* 
  * Read from a connected client
  */
 void communicateWithClient(WiFiClient client) {
     if (client.connected()) {
         ArduinoHttpServer::StreamHttpRequest<1024> request(client);
         if (request.readRequest()) {
-            // Retrieve HTTP method.
-            // E.g.: GET / PUT / HEAD / DELETE / POST
             ArduinoHttpServer::Method method( ArduinoHttpServer::Method::Invalid );
             method = request.getMethod();
-
             String endpoint = request.getResource().toString();
-
-            if (endpoint == "/m") {
-                Serial.println(request.getBody());
-
-                DynamicJsonDocument data(24);
-                deserializeJson(data, request.getBody());
-
-                if (data["isOn"]) {
-                    setPumpOn();
-                } else {
-                    setPumpOff();
+            Serial.println(endpoint);
+            if (method == ArduinoHttpServer::Method::Get) {
+                if (endpoint == "/ps") {
+                    sendStatusToClient(client);
                 }
-            } else if (endpoint == "/a") {
-                Serial.println(request.getBody());
+                
+            } else if(method == ArduinoHttpServer::Method::Post) {
+                if (endpoint == "/m") {
+                    Serial.println(request.getBody());
 
-                DynamicJsonDocument data(24);
-                deserializeJson(data, request.getBody());
+                    DynamicJsonDocument data(24);
+                    deserializeJson(data, request.getBody());
 
-                int hours = data["hours"];
-                int minutes = data["minutes"];
+                    if (data["isOn"]) {
+                        setPumpOn();
+                    } else {
+                        setPumpOff();
+                    }
 
-                setAlarm(hours, minutes, 0);
+                    ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
+                    httpReply.send("OK");
+                } else if (endpoint == "/a") {
+                    Serial.println(request.getBody());
+
+                    DynamicJsonDocument data(24);
+                    deserializeJson(data, request.getBody());
+
+                    int hours = data["hours"];
+                    int minutes = data["minutes"];
+
+                    setAlarm(hours, minutes, 0);
+
+                    ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
+                    httpReply.send("OK");
+                }
             }
         }
     }
