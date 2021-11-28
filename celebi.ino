@@ -38,6 +38,10 @@ char pass[] = SECRET_PASS;
 int status = WL_IDLE_STATUS;
 WiFiServer server(80);
 
+/* 
+ * Software Version
+ */
+const int VERSION = 1;
 
 /* 
  * Setup function
@@ -217,6 +221,7 @@ void sendStatusToClient(WiFiClient client) {
     StaticJsonDocument<200> doc;
     String data;
     doc["pumpIsActive"] = pumpIsActive;
+    doc["softwareVersion"] = VERSION;
 
     serializeJsonPretty(doc, data);
 
