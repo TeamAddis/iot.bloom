@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <WiFiNINA.h>
 #include <ArduinoHttpServer.h>
+//#include <ArduinoOTA.h>
 #include "network_secrets.h"
 
 /* 
@@ -22,12 +23,12 @@
  */
 bool pumpIsActive = false;
 #define PUMP_PIN 6
+int pumpRunTimeInMinutes = 5;
 
 /* 
  * RTC (Real time clock) variables
  */
 RTCZero rtc;
-const int GMT = 9;
 
 /* 
  * Wifi variables
@@ -56,19 +57,22 @@ void setup() {
     if (!setupWifi()) {while(true);}
 
     // Configure the RTC
-    setupRTC(rtc);
+    setupRTC();
 
     // Setup the pump pins.
     pinMode(PUMP_PIN, OUTPUT);
+
+    // start the WiFi OTA library with internal (flash) based storage
+    // ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
 }
 
 /* 
  * Function that will set an alarm for duration in the future measured in seconds.
  */
-void setAutoOffAlarmSeconds(byte secondsFromNow) {
-    byte seconds = rtc.getSeconds() + secondsFromNow;
-    byte minutes = rtc.getMinutes();
-    byte hours = rtc.getHours();
+void setAutoOffAlarmSeconds(int secondsFromNow) {
+    int seconds = rtc.getSeconds() + secondsFromNow;
+    int minutes = rtc.getMinutes();
+    int hours = rtc.getHours();
     if (seconds >= 60) {
         seconds -= 60;
         minutes++;
@@ -85,9 +89,9 @@ void setAutoOffAlarmSeconds(byte secondsFromNow) {
 /* 
  * Function that will set an alarm for duration in the future measured in minutes.
  */
-void setAutoOffAlarmMinutes(byte minutesFromNow) {
-    byte hours = rtc.getHours();
-    byte minutes = rtc.getMinutes() + minutesFromNow;
+void setAutoOffAlarmMinutes(int minutesFromNow) {
+    int hours = rtc.getHours();
+    int minutes = rtc.getMinutes() + minutesFromNow;
     if (minutes >= 60) {
         minutes -= 60;
         hours++;
@@ -105,6 +109,9 @@ void setAutoOffAlarmMinutes(byte minutesFromNow) {
  * 
  */
 void loop() {
+    // check for WiFi OTA updates
+    //ArduinoOTA.poll();
+
     WiFiClient client = server.available();
     // WiFiSSLClient client = server.available();
 
@@ -129,7 +136,7 @@ void togglePump() {
         pumpIsActive = !pumpIsActive;
 
         // Set alarm for turning off the pump
-        setAutoOffAlarmSeconds(10);
+        setAutoOffAlarmMinutes(pumpRunTimeInMinutes);
     }
 }
 
@@ -151,9 +158,14 @@ void setPumpOff() {
  * Set alarm
  */
 void setAlarm(byte hours, byte minutes, byte seconds) {
+
     Serial.println("alarm set");
-    rtc.setAlarmTime(hours, minutes, seconds);
+    Serial.println(hours);
+    Serial.println(minutes);
+    Serial.println();
+
     rtc.enableAlarm(rtc.MATCH_HHMMSS);
+    rtc.setAlarmTime(hours, minutes, seconds);
     rtc.attachInterrupt(togglePump);
 }
 
@@ -191,8 +203,9 @@ bool setupWifi() {
 /* 
  * Setup the RTC
  */
-void setupRTC(RTCZero rtc) {
+void setupRTC() {
     rtc.begin();
+    
     
     unsigned long epoch = 0;
     int numberOfTries = 0, maxTries = 6;
@@ -206,11 +219,16 @@ void setupRTC(RTCZero rtc) {
         Serial.println("NTP unreachable!!");
         while(1);
     } else {
-        Serial.print("Time received: ");
+        Serial.print("Epoch received: ");
         Serial.println(epoch);
 
         rtc.setEpoch(epoch);
-        Serial.println();
+
+        Serial.print("Time received: ");
+        Serial.print(rtc.getHours());
+        Serial.print(":");
+        Serial.print(rtc.getMinutes());
+        Serial.println();  // need this to flush io buffer to display text 
     }
 }
 
@@ -226,6 +244,7 @@ void sendStatusToClient(WiFiClient client) {
     serializeJsonPretty(doc, data);
 
     Serial.println(data);
+    Serial.println();
 
     ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
     httpReply.send(data);
@@ -241,7 +260,7 @@ void communicateWithClient(WiFiClient client) {
             ArduinoHttpServer::Method method( ArduinoHttpServer::Method::Invalid );
             method = request.getMethod();
             String endpoint = request.getResource().toString();
-            Serial.println(endpoint);
+
             if (method == ArduinoHttpServer::Method::Get) {
                 if (endpoint == "/ps") {
                     sendStatusToClient(client);
@@ -251,7 +270,7 @@ void communicateWithClient(WiFiClient client) {
                 if (endpoint == "/m") {
                     Serial.println(request.getBody());
 
-                    DynamicJsonDocument data(24);
+                    StaticJsonDocument<200> data;
                     deserializeJson(data, request.getBody());
 
                     if (data["isOn"]) {
@@ -265,11 +284,11 @@ void communicateWithClient(WiFiClient client) {
                 } else if (endpoint == "/a") {
                     Serial.println(request.getBody());
 
-                    DynamicJsonDocument data(24);
+                    DynamicJsonDocument data(200);
                     deserializeJson(data, request.getBody());
 
-                    int hours = data["hours"];
-                    int minutes = data["minutes"];
+                    byte hours = data["hours"];
+                    byte minutes = data["minutes"];
 
                     setAlarm(hours, minutes, 0);
 
