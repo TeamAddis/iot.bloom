@@ -44,6 +44,7 @@ byte alarmHours, alarmMinutes, currentDay = 0;
  */
 typedef struct {
     bool valid;
+    bool enabled;
     byte hour;
     byte minutes;
 } p_alarmData;
@@ -95,6 +96,11 @@ void setup() {
     if (data.valid) {
         alarmHours = data.hour;
         alarmMinutes = data.minutes;
+
+        if (data.enabled) {
+            dailyAlarmIsSet = false;
+            dailyAlarmEnabled = true;
+        }
     }
 
     // start the WiFi OTA library with internal (flash) based storage
