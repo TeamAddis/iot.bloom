@@ -54,10 +54,10 @@ void setup() {
     Serial.begin(115200);
 
     // Setup the wifi module.
-    if (!setupWifi()) {while(true);}
+    while (!setupWifi());
 
     // Configure the RTC
-    setupRTC();
+    while (!setupRTC());
 
     // Setup the pump pins.
     pinMode(PUMP_PIN, OUTPUT);
@@ -203,7 +203,7 @@ bool setupWifi() {
 /* 
  * Setup the RTC
  */
-void setupRTC() {
+bool setupRTC() {
     rtc.begin();
     
     
@@ -217,7 +217,7 @@ void setupRTC() {
 
     if (numberOfTries == maxTries) {
         Serial.println("NTP unreachable!!");
-        while(1);
+        return false;
     } else {
         Serial.print("Epoch received: ");
         Serial.println(epoch);
@@ -229,6 +229,7 @@ void setupRTC() {
         Serial.print(":");
         Serial.print(rtc.getMinutes());
         Serial.println();  // need this to flush io buffer to display text 
+        return true;
     }
 }
 
