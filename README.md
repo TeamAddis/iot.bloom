@@ -6,4 +6,4 @@ Smart Garden Watering System
 - Arduino MKR WiFi 1010
 
 ## Prototype Drawing
-![alt text](https://github.com/TeamAddis/Celebi/blob/main/drawings/circuit_diagram.png)
+![alt text](https://github.com/TeamAddis/Celebi/blob/main/drawings/Celebi_schem.png)
