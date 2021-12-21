@@ -50,6 +50,7 @@ typedef struct {
 } p_alarmData;
 
 FlashStorage(parameter_store, p_alarmData);
+p_alarmData pAlarmData = parameter_store.read();
 
 /* 
  * Wifi variables
@@ -92,12 +93,11 @@ void setup() {
     pinMode(PUMP_PIN, OUTPUT);
 
     // Load parameter data from Flash Memory.
-    p_alarmData data = parameter_store.read();
-    if (data.valid) {
-        alarmHours = data.hour;
-        alarmMinutes = data.minutes;
+    if (pAlarmData.valid) {
+        alarmHours = pAlarmData.hour;
+        alarmMinutes = pAlarmData.minutes;
 
-        if (data.enabled) {
+        if (pAlarmData.enabled) {
             dailyAlarmIsSet = false;
             dailyAlarmEnabled = true;
         }
@@ -143,6 +143,24 @@ void loop() {
     if (dailyAlarmEnabled) {
         setDailyPumpAlarm(alarmHours, alarmMinutes);
     }
+}
+
+// Save the alarm information that we receive from remote client
+//
+// Only use when you need to save the values in alarmHours and alarmMinutes
+//
+void saveAlarmParameterData() {
+    if ((pAlarmData.minutes == alarmMinutes) && (pAlarmData.hour == alarmHours)) {
+        Serial.println("Alarm time is same in Flash, no need to perform write.");
+        return;
+    }
+
+    pAlarmData.enabled = dailyAlarmEnabled;
+    pAlarmData.hour = alarmHours;
+    pAlarmData.minutes = alarmMinutes;
+    pAlarmData.valid = true;
+
+    parameter_store.write(pAlarmData);
 }
 
 void setDailyPumpAlarm(byte hours, byte minutes) {
@@ -311,6 +329,9 @@ void communicateWithClient(WiFiClient &client) {
                     alarmMinutes = data["minutes"];
 
                     dailyAlarmEnabled = true;
+
+                    // Save parameter data to flash memory.
+                    saveAlarmParameterData(); 
 
                     ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
                     httpReply.send("OK");
