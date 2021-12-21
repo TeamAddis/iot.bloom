@@ -33,7 +33,7 @@ byte pumpOffAtNewMinutes;
 RTCZero rtc;
 bool dailyAlarmIsSet = false;
 bool dailyAlarmEnabled = false;
-byte alarmHours, alarmMinutes, currentDay;
+byte alarmHours, alarmMinutes, currentDay = 0;
 
 /* 
  * Wifi variables
@@ -258,6 +258,7 @@ void communicateWithClient(WiFiClient &client) {
             if (method == ArduinoHttpServer::Method::Get) {
                 if (endpoint == "/ps") {
                     sendStatusToClient(client);
+                    printAlarmStatus();
                 }
                 
             } else if(method == ArduinoHttpServer::Method::Post) {
@@ -324,4 +325,27 @@ void sendMessageToDiscord(const String& message) {
         }
 
     } else {return;} 
+}
+
+void printAlarmStatus() {
+    Serial.println("Current Alarm Status");
+    Serial.print("Daily Alarm Enabled: ");
+    if (!dailyAlarmEnabled) {
+        Serial.println("No");
+        return;
+    }
+    Serial.println(dailyAlarmEnabled);
+    Serial.print("Daily Alarm Set: ");
+    Serial.println(dailyAlarmIsSet);
+    Serial.print("Current Alarm Time: ");
+
+    byte newHours = alarmHours + 9;
+    if (newHours > 23) {newHours -= 24;}
+    Serial.print(newHours);
+    Serial.print(":");
+
+    if (alarmMinutes < 10) {
+        Serial.print(0);
+    }
+    Serial.println(alarmMinutes);
 }
