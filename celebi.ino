@@ -24,12 +24,16 @@
  */
 bool pumpIsActive = false;
 #define PUMP_PIN 6
-int pumpRunTimeInMinutes = 5;
+int pumpRunTimeInMinutes = 1;
+byte pumpOffAtNewMinutes;
 
 /* 
  * RTC (Real time clock) variables
  */
 RTCZero rtc;
+bool dailyAlarmIsSet = false;
+bool dailyAlarmEnabled = false;
+byte alarmHours, alarmMinutes, currentDay;
 
 /* 
  * Wifi variables
@@ -45,6 +49,8 @@ WiFiServer server(80);
  */
 const char discord_url[] = "discordapp.com";
 const String discordWebhook = SECRET_DISCORD_WEBHOOK;
+WiFiSSLClient sslClient;
+HttpClient http_client = HttpClient(sslClient, discord_url, 443);
 
 /* 
  * Software Version
@@ -69,47 +75,14 @@ void setup() {
     // Setup the pump pins.
     pinMode(PUMP_PIN, OUTPUT);
 
+    // Configure the Discord connection
+    // http_client.setHttpResponseTimeout(1000);
+
     // start the WiFi OTA library with internal (flash) based storage
     // ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
 
     // Send message to discord confirming setup and connection to wifi
     sendMessageToDiscord("Celebi connected to wifi and ready to water the garden.");
-}
-
-/* 
- * Function that will set an alarm for duration in the future measured in seconds.
- */
-void setAutoOffAlarmSeconds(int secondsFromNow) {
-    int seconds = rtc.getSeconds() + secondsFromNow;
-    int minutes = rtc.getMinutes();
-    int hours = rtc.getHours();
-    if (seconds >= 60) {
-        seconds -= 60;
-        minutes++;
-        if (minutes >= 60) {
-            minutes -= 60;
-            if (hours == 24) {
-                hours = 0;
-            }
-        }
-    }
-    setAlarm(hours, minutes, seconds);
-}
-
-/* 
- * Function that will set an alarm for duration in the future measured in minutes.
- */
-void setAutoOffAlarmMinutes(int minutesFromNow) {
-    int hours = rtc.getHours();
-    int minutes = rtc.getMinutes() + minutesFromNow;
-    if (minutes >= 60) {
-        minutes -= 60;
-        hours++;
-        if (hours == 24) {
-            hours = 0;
-        }
-    }
-    setAlarm(hours, minutes, rtc.getSeconds());
 }
 
 /* 
@@ -127,27 +100,36 @@ void loop() {
 
     if (client) {
         communicateWithClient(client);
+
+        if (client.connected()) {
+            client.stop();
+            Serial.println("remote client disconnected");
+        }
+    }
+
+    // Check to see if any pumps are needing to be turned off.
+    if (pumpIsActive) {
+        if (rtc.getMinutes() == pumpOffAtNewMinutes) {
+            setPumpOff();
+        }
+    }
+
+    // Check if we need to set an alarm.
+    if (dailyAlarmEnabled) {
+        setDailyPumpAlarm(alarmHours, alarmMinutes);
     }
 }
 
-/* 
- * Toggle the submersable pump
- */
-void togglePump() {
-    if (pumpIsActive) {
-        // Turn off the pump
-        Serial.println("Turning Pump off");
-        digitalWrite(PUMP_PIN, LOW);
-        pumpIsActive = !pumpIsActive;
+void setDailyPumpAlarm(byte hours, byte minutes) {
+    if (!dailyAlarmIsSet) {
+        currentDay = rtc.getDay();
+        setPumpOnAlarm(hours, minutes, 0);
     } else {
-        // Turn on the pump
-        Serial.println("Turning Pump on");
-        digitalWrite(PUMP_PIN, HIGH);
-        pumpIsActive = !pumpIsActive;
-
-        // Set alarm for turning off the pump
-        setAutoOffAlarmMinutes(pumpRunTimeInMinutes);
+        if (currentDay != rtc.getDay()) {
+            dailyAlarmIsSet = false;
+        }
     }
+    
 }
 
 // Turn on the pump
@@ -155,6 +137,9 @@ void setPumpOn() {
     Serial.println("Turning Pump on");
     digitalWrite(PUMP_PIN, HIGH);
     pumpIsActive = true;
+    pumpOffAtNewMinutes = rtc.getMinutes() + pumpRunTimeInMinutes;
+    if (pumpOffAtNewMinutes > 59) {pumpOffAtNewMinutes-=60;}
+    sendMessageToDiscord("Pump has turned on.");
 }
 
 // Turn off the pump
@@ -162,21 +147,19 @@ void setPumpOff() {
     Serial.println("Turning Pump off");
     digitalWrite(PUMP_PIN, LOW);
     pumpIsActive = false;
+    sendMessageToDiscord("Pump has turned off.");
 }
 
 /* 
  * Set alarm
  */
-void setAlarm(byte hours, byte minutes, byte seconds) {
-
+void setPumpOnAlarm(byte hours, byte minutes, byte seconds) {
     Serial.println("alarm set");
-    Serial.println(hours);
-    Serial.println(minutes);
-    Serial.println();
 
     rtc.enableAlarm(rtc.MATCH_HHMMSS);
     rtc.setAlarmTime(hours, minutes, seconds);
-    rtc.attachInterrupt(togglePump);
+    rtc.attachInterrupt(setPumpOn);
+    dailyAlarmIsSet = true;
 }
 
 /* 
@@ -246,7 +229,7 @@ bool setupRTC() {
 /* 
 * Send the connected client the server status
  */
-void sendStatusToClient(WiFiClient client) {
+void sendStatusToClient(WiFiClient &client) {
     StaticJsonDocument<200> doc;
     String data;
     doc["pumpIsActive"] = pumpIsActive;
@@ -264,7 +247,7 @@ void sendStatusToClient(WiFiClient client) {
 /* 
  * Read from a connected client
  */
-void communicateWithClient(WiFiClient client) {
+void communicateWithClient(WiFiClient &client) {
     if (client.connected()) {
         ArduinoHttpServer::StreamHttpRequest<1024> request(client);
         if (request.readRequest()) {
@@ -281,7 +264,7 @@ void communicateWithClient(WiFiClient client) {
                 if (endpoint == "/m") {
                     Serial.println(request.getBody());
 
-                    StaticJsonDocument<200> data;
+                    StaticJsonDocument<32> data;
                     deserializeJson(data, request.getBody());
 
                     if (data["isOn"]) {
@@ -295,13 +278,13 @@ void communicateWithClient(WiFiClient client) {
                 } else if (endpoint == "/a") {
                     Serial.println(request.getBody());
 
-                    DynamicJsonDocument data(200);
+                    StaticJsonDocument<64> data;
                     deserializeJson(data, request.getBody());
 
-                    byte hours = data["hours"];
-                    byte minutes = data["minutes"];
+                    alarmHours = data["hours"];
+                    alarmMinutes = data["minutes"];
 
-                    setAlarm(hours, minutes, 0);
+                    dailyAlarmEnabled = true;
 
                     ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
                     httpReply.send("OK");
@@ -309,31 +292,36 @@ void communicateWithClient(WiFiClient client) {
             }
         }
     }
-
-    client.stop();
-    Serial.println("client disconnected");
 }
 
-void sendMessageToDiscord(String message) {
-    WiFiSSLClient client;
-    HttpClient http_client = HttpClient(client, discord_url, 443);
+void sendMessageToDiscord(const String& message) {
+    if (message == NULL) {
+        Serial.println("Message cannot be NULL.");
+        return;
+    }
 
-    StaticJsonDocument<200> json;
-    json["content"] = message;
-    String data = "";
-    serializeJson(json, data);
+    int messageLength = message.length();
+    if (messageLength > 0) {
 
-    Serial.println("[HTTP] Connecting to Discord...");
-    Serial.println("[HTTP] Message: " + message);
-    
-    http_client.post(discordWebhook, "application/json", data);
+        Serial.println("[HTTP] Connecting to Discord...");
+        Serial.println("[HTTP] Message: " + message);
+        // Serial.println("[HTTP] Content: " + data);
+        
+        http_client.post(discordWebhook, "application/json", "{\"content\":\"" + message + "\"}");
 
-    // read the status code and body of the response
-    int statusCode = http_client.responseStatusCode();
-    String response = http_client.responseBody();
+        // read the status code and body of the response
+        if (http_client.connected()) {
+            int statusCode = http_client.responseStatusCode();
+            String response = http_client.responseBody();
 
-    Serial.print("[HTTP] Status code: ");
-    Serial.println(statusCode);
-    Serial.print("[HTTP] Response: ");
-    Serial.println(response);
+            Serial.print("[HTTP] Status code: ");
+            Serial.println(statusCode);
+            Serial.print("[HTTP] Response: ");
+            Serial.println(response);
+
+            http_client.stop();
+            Serial.println("Disconnecting client from Discord.");
+        }
+
+    } else {return;} 
 }
