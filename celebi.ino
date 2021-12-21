@@ -15,6 +15,7 @@
 #include <ArduinoJson.h>
 #include <WiFiNINA.h>
 #include <ArduinoHttpServer.h>
+#include <ArduinoHttpClient.h>
 //#include <ArduinoOTA.h>
 #include "network_secrets.h"
 
@@ -38,6 +39,12 @@ char pass[] = SECRET_PASS;
 
 int status = WL_IDLE_STATUS;
 WiFiServer server(80);
+
+/*
+ *  Discord variables
+ */
+const char discord_url[] = "discordapp.com";
+const String discordWebhook = SECRET_DISCORD_WEBHOOK;
 
 /* 
  * Software Version
@@ -64,6 +71,9 @@ void setup() {
 
     // start the WiFi OTA library with internal (flash) based storage
     // ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
+
+    // Send message to discord confirming setup and connection to wifi
+    sendMessageToDiscord("Celebi connected to wifi and ready to water the garden.");
 }
 
 /* 
@@ -302,4 +312,28 @@ void communicateWithClient(WiFiClient client) {
 
     client.stop();
     Serial.println("client disconnected");
+}
+
+void sendMessageToDiscord(String message) {
+    WiFiSSLClient client;
+    HttpClient http_client = HttpClient(client, discord_url, 443);
+
+    StaticJsonDocument<200> json;
+    json["content"] = message;
+    String data = "";
+    serializeJson(json, data);
+
+    Serial.println("[HTTP] Connecting to Discord...");
+    Serial.println("[HTTP] Message: " + message);
+    
+    http_client.post(discordWebhook, "application/json", data);
+
+    // read the status code and body of the response
+    int statusCode = http_client.responseStatusCode();
+    String response = http_client.responseBody();
+
+    Serial.print("[HTTP] Status code: ");
+    Serial.println(statusCode);
+    Serial.print("[HTTP] Response: ");
+    Serial.println(response);
 }

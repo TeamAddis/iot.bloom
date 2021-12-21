@@ -30,6 +30,7 @@
                 "C:\\Users\\andrew\\Documents\\Arduino\\libraries\\WiFiNINA\\src",
                 "C:\\Users\\andrew\\Documents\\Arduino\\libraries\\ArduinoHttpServer\\src",
                 "C:\\Users\\andrew\\Documents\\Arduino\\libraries\\Base64\\src",
+                "C:\\Users\\andrew\\Documents\\Arduino\\libraries\\ArduinoHttpClient\\src",
                 "c:\\users\\andrew\\appdata\\local\\arduino15\\packages\\arduino\\tools\\arm-none-eabi-gcc\\7-2017q4\\arm-none-eabi\\include\\c++\\7.2.1",
                 "c:\\users\\andrew\\appdata\\local\\arduino15\\packages\\arduino\\tools\\arm-none-eabi-gcc\\7-2017q4\\arm-none-eabi\\include\\c++\\7.2.1\\arm-none-eabi",
                 "c:\\users\\andrew\\appdata\\local\\arduino15\\packages\\arduino\\tools\\arm-none-eabi-gcc\\7-2017q4\\arm-none-eabi\\include\\c++\\7.2.1\\backward",
