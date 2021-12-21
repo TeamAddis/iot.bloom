@@ -16,6 +16,7 @@
 #include <WiFiNINA.h>
 #include <ArduinoHttpServer.h>
 #include <ArduinoHttpClient.h>
+#include <FlashStorage.h>
 //#include <ArduinoOTA.h>
 #include "network_secrets.h"
 
@@ -34,6 +35,20 @@ RTCZero rtc;
 bool dailyAlarmIsSet = false;
 bool dailyAlarmEnabled = false;
 byte alarmHours, alarmMinutes, currentDay = 0;
+
+/* 
+ * Setup parameter storage in flash
+ *
+ *  The "valid" variable is set to "true" once the structure is
+ *  filled with actual data for the first time.
+ */
+typedef struct {
+    bool valid;
+    byte hour;
+    byte minutes;
+} p_alarmData;
+
+FlashStorage(parameter_store, p_alarmData);
 
 /* 
  * Wifi variables
@@ -75,8 +90,12 @@ void setup() {
     // Setup the pump pins.
     pinMode(PUMP_PIN, OUTPUT);
 
-    // Configure the Discord connection
-    // http_client.setHttpResponseTimeout(1000);
+    // Load parameter data from Flash Memory.
+    p_alarmData data = parameter_store.read();
+    if (data.valid) {
+        alarmHours = data.hour;
+        alarmMinutes = data.minutes;
+    }
 
     // start the WiFi OTA library with internal (flash) based storage
     // ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
