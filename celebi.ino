@@ -143,6 +143,11 @@ void loop() {
     if (dailyAlarmEnabled) {
         setDailyPumpAlarm(alarmHours, alarmMinutes);
     }
+
+    // Check if we lost connection to the internet and try to reconnect if we did.
+    if (status == WL_CONNECTION_LOST) {
+        setupWifi();
+    }
 }
 
 // Save the alarm information that we receive from remote client
@@ -221,6 +226,7 @@ bool setupWifi() {
     }
 
     // attempt to connect to WiFi network:
+    int retryCount = 0;
     while (status != WL_CONNECTED) {
         Serial.print("Attempting to connect to Network named: ");
         Serial.println(ssid);                   // print the network name (SSID);
@@ -229,6 +235,11 @@ bool setupWifi() {
         
         // wait 10 seconds for connection:
         delay(10000);
+
+        retryCount++;
+        if (retryCount == 3) {
+            return false;
+        }
     }
 
     server.begin();
@@ -347,6 +358,11 @@ void sendMessageToDiscord(const String& message) {
         return;
     }
 
+    if (status != WL_CONNECTED) {
+        // We don't want to try to send message if the wifi isn't connected.
+        return;
+    }
+
     int messageLength = message.length();
     if (messageLength > 0) {
 
@@ -354,6 +370,7 @@ void sendMessageToDiscord(const String& message) {
         Serial.println("[HTTP] Message: " + message);
         // Serial.println("[HTTP] Content: " + data);
         
+        http_client.setHttpResponseTimeout(30000);
         http_client.post(discordWebhook, "application/json", "{\"content\":\"" + message + "\"}");
 
         // read the status code and body of the response
