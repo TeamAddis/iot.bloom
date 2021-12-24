@@ -84,10 +84,10 @@ void setup() {
     Serial.begin(115200);
 
     // Setup the wifi module.
-    while (!setupWifi());
+    while (!setupWifi(server));
 
     // Configure the RTC
-    while (!setupRTC());
+    while (!setupRTC(rtc));
 
     // Setup the pump pins.
     pinMode(PUMP_PIN, OUTPUT);
@@ -117,11 +117,7 @@ void setup() {
  * 
  */
 void loop() {
-    // check for WiFi OTA updates
-    //ArduinoOTA.poll();
-
     WiFiClient client = server.available();
-    // WiFiSSLClient client = server.available();
 
     if (client) {
         communicateWithClient(client);
@@ -146,7 +142,7 @@ void loop() {
 
     // Check if we lost connection to the internet and try to reconnect if we did.
     if (status == WL_CONNECTION_LOST) {
-        setupWifi();
+        setupWifi(server);
     }
 }
 
@@ -213,7 +209,7 @@ void setPumpOnAlarm(byte hours, byte minutes, byte seconds) {
 /* 
  * Setup the wifi chip
  */
-bool setupWifi() {
+bool setupWifi(WiFiServer &server) {
     if (WiFi.status() == WL_NO_MODULE) {
         Serial.println("Communication with WiFi module failed!");
         return false;
@@ -243,16 +239,14 @@ bool setupWifi() {
     }
 
     server.begin();
-
     return true;
 }
 
 /* 
  * Setup the RTC
  */
-bool setupRTC() {
+bool setupRTC(RTCZero &rtc) {
     rtc.begin();
-    
     
     unsigned long epoch = 0;
     int numberOfTries = 0, maxTries = 6;
@@ -374,18 +368,17 @@ void sendMessageToDiscord(const String& message) {
         http_client.post(discordWebhook, "application/json", "{\"content\":\"" + message + "\"}");
 
         // read the status code and body of the response
-        if (http_client.connected()) {
-            int statusCode = http_client.responseStatusCode();
-            String response = http_client.responseBody();
+        int statusCode = http_client.responseStatusCode();
+        String response = http_client.responseBody();
 
-            Serial.print("[HTTP] Status code: ");
-            Serial.println(statusCode);
-            Serial.print("[HTTP] Response: ");
-            Serial.println(response);
+        Serial.print("[HTTP] Status code: ");
+        Serial.println(statusCode);
+        Serial.print("[HTTP] Response: ");
+        Serial.println(response);
 
-            http_client.stop();
-            Serial.println("Disconnecting client from Discord.");
-        }
+        http_client.stop();
+        Serial.println("Disconnecting client from Discord.");
+        
 
     } else {return;} 
 }
