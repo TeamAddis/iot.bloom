@@ -4,6 +4,7 @@
         {
             "name": "Arduino",
             "compilerPath": "C:\\Users\\andrew\\AppData\\Local\\Arduino15\\packages\\arduino\\tools\\arm-none-eabi-gcc\\7-2017q4\\bin\\arm-none-eabi-g++",
+            "output": "../ArduinoOutput",
             "compilerArgs": [
                 "-mcpu=cortex-m0plus",
                 "-mthumb",

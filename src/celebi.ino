@@ -15,17 +15,17 @@
 #include <ArduinoJson.h>
 #include <WiFiNINA.h>
 #include <ArduinoHttpServer.h>
-#include <ArduinoHttpClient.h>
+
 #include <FlashStorage.h>
-//#include <ArduinoOTA.h>
+
+#include "pump.h"
 #include "network_secrets.h"
+#include "discord.h"
 
 /* 
  * Pump variables
  */
-bool pumpIsActive = false;
-#define PUMP_PIN 6
-int pumpRunTimeInMinutes = 1;
+Pump pump(6);
 byte pumpOffAtNewMinutes;
 
 /* 
@@ -61,13 +61,7 @@ char pass[] = SECRET_PASS;
 int status = WL_IDLE_STATUS;
 WiFiServer server(80);
 
-/*
- *  Discord variables
- */
-const char discord_url[] = "discordapp.com";
-const String discordWebhook = SECRET_DISCORD_WEBHOOK;
-WiFiSSLClient sslClient;
-HttpClient http_client = HttpClient(sslClient, discord_url, 443);
+
 
 /* 
  * Software Version
@@ -84,13 +78,10 @@ void setup() {
     Serial.begin(115200);
 
     // Setup the wifi module.
-    while (!setupWifi(server));
+    setupWifi();
 
     // Configure the RTC
-    while (!setupRTC(rtc));
-
-    // Setup the pump pins.
-    pinMode(PUMP_PIN, OUTPUT);
+    setupRTC();
 
     // Load parameter data from Flash Memory.
     if (pAlarmData.valid) {
@@ -129,9 +120,9 @@ void loop() {
     }
 
     // Check to see if any pumps are needing to be turned off.
-    if (pumpIsActive) {
+    if (pump.isActive()) {
         if (rtc.getMinutes() == pumpOffAtNewMinutes) {
-            setPumpOff();
+            pump.off();
         }
     }
 
@@ -142,7 +133,7 @@ void loop() {
 
     // Check if we lost connection to the internet and try to reconnect if we did.
     if (status == WL_CONNECTION_LOST) {
-        setupWifi(server);
+        setupWifi();
     }
 }
 
@@ -176,23 +167,8 @@ void setDailyPumpAlarm(byte hours, byte minutes) {
     
 }
 
-// Turn on the pump
-void setPumpOn() {
-    Serial.println("Turning Pump on");
-    digitalWrite(PUMP_PIN, HIGH);
-    pumpIsActive = true;
-    pumpOffAtNewMinutes = rtc.getMinutes() + pumpRunTimeInMinutes;
-    if (pumpOffAtNewMinutes > 59) {pumpOffAtNewMinutes-=60;}
-    sendMessageToDiscord("Pump has turned on.");
-}
-
-// Turn off the pump
-void setPumpOff() {
-    Serial.println("Turning Pump off");
-    digitalWrite(PUMP_PIN, LOW);
-    pumpIsActive = false;
-    sendMessageToDiscord("Pump has turned off.");
-}
+/* Need wrapper function to pass function pointer to the alarm interup */
+void turnPumpOn() { pump.on(); }
 
 /* 
  * Set alarm
@@ -202,17 +178,19 @@ void setPumpOnAlarm(byte hours, byte minutes, byte seconds) {
 
     rtc.enableAlarm(rtc.MATCH_HHMMSS);
     rtc.setAlarmTime(hours, minutes, seconds);
-    rtc.attachInterrupt(setPumpOn);
+    rtc.attachInterrupt(turnPumpOn);
     dailyAlarmIsSet = true;
 }
 
 /* 
  * Setup the wifi chip
  */
-bool setupWifi(WiFiServer &server) {
+void setupWifi() {
     if (WiFi.status() == WL_NO_MODULE) {
         Serial.println("Communication with WiFi module failed!");
-        return false;
+        // wifi module isn't responding.
+        // don't contintue
+        while (true);
     }
 
     // Check the firmware version
@@ -222,7 +200,6 @@ bool setupWifi(WiFiServer &server) {
     }
 
     // attempt to connect to WiFi network:
-    int retryCount = 0;
     while (status != WL_CONNECTED) {
         Serial.print("Attempting to connect to Network named: ");
         Serial.println(ssid);                   // print the network name (SSID);
@@ -231,21 +208,16 @@ bool setupWifi(WiFiServer &server) {
         
         // wait 10 seconds for connection:
         delay(10000);
-
-        retryCount++;
-        if (retryCount == 3) {
-            return false;
-        }
     }
-
     server.begin();
-    return true;
+
+    printWifiStatus();
 }
 
 /* 
  * Setup the RTC
  */
-bool setupRTC(RTCZero &rtc) {
+void setupRTC() {
     rtc.begin();
     
     unsigned long epoch = 0;
@@ -258,7 +230,6 @@ bool setupRTC(RTCZero &rtc) {
 
     if (numberOfTries == maxTries) {
         Serial.println("NTP unreachable!!");
-        return false;
     } else {
         Serial.print("Epoch received: ");
         Serial.println(epoch);
@@ -270,7 +241,6 @@ bool setupRTC(RTCZero &rtc) {
         Serial.print(":");
         Serial.print(rtc.getMinutes());
         Serial.println();  // need this to flush io buffer to display text 
-        return true;
     }
 }
 
@@ -280,7 +250,7 @@ bool setupRTC(RTCZero &rtc) {
 void sendStatusToClient(WiFiClient &client) {
     StaticJsonDocument<200> doc;
     String data;
-    doc["pumpIsActive"] = pumpIsActive;
+    doc["pumpIsActive"] = pump.isActive();
     doc["softwareVersion"] = VERSION;
 
     serializeJsonPretty(doc, data);
@@ -317,9 +287,9 @@ void communicateWithClient(WiFiClient &client) {
                     deserializeJson(data, request.getBody());
 
                     if (data["isOn"]) {
-                        setPumpOn();
+                        pump.on();
                     } else {
-                        setPumpOff();
+                        pump.off();
                     }
 
                     ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
@@ -346,41 +316,23 @@ void communicateWithClient(WiFiClient &client) {
     }
 }
 
-void sendMessageToDiscord(const String& message) {
-    if (message == NULL) {
-        Serial.println("Message cannot be NULL.");
-        return;
-    }
 
-    if (status != WL_CONNECTED) {
-        // We don't want to try to send message if the wifi isn't connected.
-        return;
-    }
 
-    int messageLength = message.length();
-    if (messageLength > 0) {
+void printWifiStatus() {
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
 
-        Serial.println("[HTTP] Connecting to Discord...");
-        Serial.println("[HTTP] Message: " + message);
-        // Serial.println("[HTTP] Content: " + data);
-        
-        http_client.setHttpResponseTimeout(30000);
-        http_client.post(discordWebhook, "application/json", "{\"content\":\"" + message + "\"}");
+  // print your board's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
 
-        // read the status code and body of the response
-        int statusCode = http_client.responseStatusCode();
-        String response = http_client.responseBody();
-
-        Serial.print("[HTTP] Status code: ");
-        Serial.println(statusCode);
-        Serial.print("[HTTP] Response: ");
-        Serial.println(response);
-
-        http_client.stop();
-        Serial.println("Disconnecting client from Discord.");
-        
-
-    } else {return;} 
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
 }
 
 void printAlarmStatus() {
