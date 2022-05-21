@@ -1,6 +1,8 @@
 # Celebi
 Smart Garden Watering System
 
+Connect to the server via [iOS Celebi Gardener App](https://github.com/TeamAddis/Celibi-App)
+
 ## Component List
 
 - Arduino MKR WiFi 1010
