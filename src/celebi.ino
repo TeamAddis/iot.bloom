@@ -15,12 +15,10 @@
 #include <ArduinoJson.h>
 #include <WiFiNINA.h>
 #include <ArduinoHttpServer.h>
-
-#include <FlashStorage.h>
-
 #include "pump.h"
 #include "network_secrets.h"
 #include "discord.h"
+#include "persistance.h"
 
 /* 
  * Pump variables
@@ -33,24 +31,7 @@ byte pumpOffAtNewMinutes;
  */
 RTCZero rtc;
 bool dailyAlarmIsSet = false;
-bool dailyAlarmEnabled = false;
-byte alarmHours, alarmMinutes, currentDay = 0;
-
-/* 
- * Setup parameter storage in flash
- *
- *  The "valid" variable is set to "true" once the structure is
- *  filled with actual data for the first time.
- */
-typedef struct {
-    bool valid;
-    bool enabled;
-    byte hour;
-    byte minutes;
-} p_alarmData;
-
-FlashStorage(parameter_store, p_alarmData);
-p_alarmData pAlarmData = parameter_store.read();
+byte currentDay = 0;
 
 /* 
  * Wifi variables
@@ -83,20 +64,6 @@ void setup() {
     // Configure the RTC
     setupRTC();
 
-    // Load parameter data from Flash Memory.
-    if (pAlarmData.valid) {
-        alarmHours = pAlarmData.hour;
-        alarmMinutes = pAlarmData.minutes;
-
-        if (pAlarmData.enabled) {
-            dailyAlarmIsSet = false;
-            dailyAlarmEnabled = true;
-        }
-    }
-
-    // start the WiFi OTA library with internal (flash) based storage
-    // ArduinoOTA.begin(WiFi.localIP(), "Arduino", "password", InternalStorage);
-
     // Send message to discord confirming setup and connection to wifi
     sendMessageToDiscord("Celebi connected to wifi and ready to water the garden.");
 }
@@ -127,32 +94,14 @@ void loop() {
     }
 
     // Check if we need to set an alarm.
-    if (dailyAlarmEnabled) {
-        setDailyPumpAlarm(alarmHours, alarmMinutes);
+    if (pAlarmData.enabled) {
+        setDailyPumpAlarm(pAlarmData.hour, pAlarmData.minutes);
     }
 
     // Check if we lost connection to the internet and try to reconnect if we did.
     if (status == WL_CONNECTION_LOST) {
         setupWifi();
     }
-}
-
-// Save the alarm information that we receive from remote client
-//
-// Only use when you need to save the values in alarmHours and alarmMinutes
-//
-void saveAlarmParameterData() {
-    if ((pAlarmData.minutes == alarmMinutes) && (pAlarmData.hour == alarmHours)) {
-        Serial.println("Alarm time is same in Flash, no need to perform write.");
-        return;
-    }
-
-    pAlarmData.enabled = dailyAlarmEnabled;
-    pAlarmData.hour = alarmHours;
-    pAlarmData.minutes = alarmMinutes;
-    pAlarmData.valid = true;
-
-    parameter_store.write(pAlarmData);
 }
 
 void setDailyPumpAlarm(byte hours, byte minutes) {
@@ -164,7 +113,6 @@ void setDailyPumpAlarm(byte hours, byte minutes) {
             dailyAlarmIsSet = false;
         }
     }
-    
 }
 
 /* Need wrapper function to pass function pointer to the alarm interup */
@@ -175,7 +123,6 @@ void turnPumpOn() { pump.on(); }
  */
 void setPumpOnAlarm(byte hours, byte minutes, byte seconds) {
     Serial.println("alarm set");
-
     rtc.enableAlarm(rtc.MATCH_HHMMSS);
     rtc.setAlarmTime(hours, minutes, seconds);
     rtc.attachInterrupt(turnPumpOn);
@@ -252,6 +199,11 @@ void sendStatusToClient(WiFiClient &client) {
     String data;
     doc["pumpIsActive"] = pump.isActive();
     doc["softwareVersion"] = VERSION;
+    doc["alarmHours"] = pAlarmData.hour;
+    doc["alarmMinutes"] = pAlarmData.minutes;
+    doc["alarmEnabled"] = pAlarmData.enabled;
+    doc["alarmValid"] = pAlarmData.valid;
+    doc["alarmId"] = pAlarmData.id;
 
     serializeJsonPretty(doc, data);
 
@@ -297,16 +249,32 @@ void communicateWithClient(WiFiClient &client) {
                 } else if (endpoint == "/a") {
                     Serial.println(request.getBody());
 
-                    StaticJsonDocument<64> data;
+                    StaticJsonDocument<128> data;
                     deserializeJson(data, request.getBody());
+                    bool alarmWasChanged = false;
 
-                    alarmHours = data["hours"];
-                    alarmMinutes = data["minutes"];
+                    if (pAlarmData.hour != data["hours"]) {
+                        pAlarmData.hour = data["hours"];
+                        alarmWasChanged = true;
+                    }
+                    
+                    if (pAlarmData.minutes != data["minutes"]) {
+                        pAlarmData.minutes = data["minutes"];
+                        alarmWasChanged = true;
+                    }
+                    
+                    if (pAlarmData.id != data["id"]) {
+                        alarmWasChanged = true;
+                        pAlarmData.id = data["id"];
+                    }
 
-                    dailyAlarmEnabled = true;
+                    if (pAlarmData.enabled != data["enabled"]) {
+                        alarmWasChanged = true;
+                        pAlarmData.enabled = data["enabled"];
+                    }
 
-                    // Save parameter data to flash memory.
-                    saveAlarmParameterData(); 
+                    // Save parameter data to flash memory if needed.
+                    saveAlarmParameterData(alarmWasChanged); 
 
                     ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
                     httpReply.send("OK");
@@ -338,22 +306,22 @@ void printWifiStatus() {
 void printAlarmStatus() {
     Serial.println("Current Alarm Status");
     Serial.print("Daily Alarm Enabled: ");
-    if (!dailyAlarmEnabled) {
+    if (!pAlarmData.enabled) {
         Serial.println("No");
         return;
     }
-    Serial.println(dailyAlarmEnabled);
+    Serial.println(pAlarmData.enabled);
     Serial.print("Daily Alarm Set: ");
     Serial.println(dailyAlarmIsSet);
     Serial.print("Current Alarm Time: ");
 
-    byte newHours = alarmHours + 9;
+    byte newHours = pAlarmData.hour + 9;
     if (newHours > 23) {newHours -= 24;}
     Serial.print(newHours);
     Serial.print(":");
 
-    if (alarmMinutes < 10) {
+    if (pAlarmData.minutes < 10) {
         Serial.print(0);
     }
-    Serial.println(alarmMinutes);
+    Serial.println(pAlarmData.minutes);
 }

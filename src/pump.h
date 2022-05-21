@@ -1,5 +1,5 @@
-#ifndef Pump_h
-#define Pump_h
+#ifndef pump_h
+#define pump_h
 
 #include "Arduino.h"
 

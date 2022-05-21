@@ -2,5 +2,6 @@
     "board": "arduino:samd:mkrwifi1010",
     "port": "COM4",
     "sketch": "src\\celebi.ino",
-    "programmer": "arduino:atmel_ice"
+    "programmer": "arduino:atmel_ice",
+    "output": "../ArduinoOutput/Celebi"
 }
