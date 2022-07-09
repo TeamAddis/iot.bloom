@@ -24,7 +24,7 @@
  * Pump variables
  */
 Pump pump(6);
-byte pumpOffAtNewMinutes;
+byte pumpOnStartMinutes;
 
 /* 
  * RTC (Real time clock) variables
@@ -41,8 +41,6 @@ char pass[] = SECRET_PASS;
 
 int status = WL_IDLE_STATUS;
 WiFiServer server(80);
-
-
 
 /* 
  * Software Version
@@ -63,6 +61,9 @@ void setup() {
 
     // Configure the RTC
     setupRTC();
+
+    // Init the data storage Ids if needed
+    initAlarmIds();
 
     // Send message to discord confirming setup and connection to wifi
     sendMessageToDiscord("Celebi connected to wifi and ready to water the garden.");
@@ -87,16 +88,17 @@ void loop() {
     }
 
     // Check to see if any pumps are needing to be turned off.
+    // This is to ensure we never have pumps on more than 1 minute
+    // as a safety measure to prevent damage to the pump in the case
+    // we run the resivor dry.
     if (pump.isActive()) {
-        if (rtc.getMinutes() == pumpOffAtNewMinutes) {
-            pump.off();
-        }
+        if ((rtc.getMinutes() - pumpOnStartMinutes > 1) || (rtc.getMinutes() - pumpOnStartMinutes < 0)) {
+            turnPumpOff();
+        } 
     }
 
-    // Check if we need to set an alarm.
-    if (pAlarmData.enabled) {
-        setDailyPumpAlarm(pAlarmData.hour, pAlarmData.minutes);
-    }
+    // Check if we have any enabled alarms
+    checkAlarms();
 
     // Check if we lost connection to the internet and try to reconnect if we did.
     if (status == WL_CONNECTION_LOST) {
@@ -104,29 +106,49 @@ void loop() {
     }
 }
 
-void setDailyPumpAlarm(byte hours, byte minutes) {
-    if (!dailyAlarmIsSet) {
-        currentDay = rtc.getDay();
-        setPumpOnAlarm(hours, minutes, 0);
-    } else {
-        if (currentDay != rtc.getDay()) {
-            dailyAlarmIsSet = false;
+void checkAlarms() {
+    if (areActiveAlarms()) {
+        // We have 4 different alarms available in FlashStorage
+        // pAlarms.timer0
+        // pAlarms.timer1
+        // pAlarms.timer2
+        // pAlarms.timer3
+        //
+        // Check for enabled alarms, and if enabled compare it to the current time.
+        checkAlarmAgainstTime(pAlarms.timer0);
+        checkAlarmAgainstTime(pAlarms.timer1);
+        checkAlarmAgainstTime(pAlarms.timer2);
+        checkAlarmAgainstTime(pAlarms.timer3);
+    }
+}
+
+/* 
+    check for matching alarms to the current time
+    match format is HH:MM:SS
+    but SS will always be 00 since we are not setting the seconds.
+ */
+void checkAlarmAgainstTime(p_alarmData &alarm) {
+    if (alarm.enabled) {
+        byte currentHours = rtc.getHours();
+        byte currentMinutes = rtc.getMinutes();
+        byte currentSeconds = rtc.getSeconds();
+
+        if ((currentHours == alarm.hour) && (currentMinutes == alarm.minutes) && (currentSeconds == 0)) {
+            // We have a match and should turn the pump on.
+            turnPumpOn();
         }
     }
 }
 
 /* Need wrapper function to pass function pointer to the alarm interup */
-void turnPumpOn() { pump.on(); }
-
-/* 
- * Set alarm
- */
-void setPumpOnAlarm(byte hours, byte minutes, byte seconds) {
-    Serial.println("alarm set");
-    rtc.enableAlarm(rtc.MATCH_HHMMSS);
-    rtc.setAlarmTime(hours, minutes, seconds);
-    rtc.attachInterrupt(turnPumpOn);
-    dailyAlarmIsSet = true;
+void turnPumpOn() {
+    pump.on();
+    pumpOnStartMinutes = rtc.getMinutes();
+    sendMessageToDiscord("Turning Pump on.");
+}
+void turnPumpOff() {
+    pump.off();
+    sendMessageToDiscord("Turning Pump off.");
 }
 
 /* 
@@ -191,19 +213,43 @@ void setupRTC() {
     }
 }
 
+
 /* 
 * Send the connected client the server status
  */
 void sendStatusToClient(WiFiClient &client) {
-    StaticJsonDocument<200> doc;
+    StaticJsonDocument<16> doc;
+    String data;
+    doc["softwareVersion"] = VERSION;
+
+    serializeJsonPretty(doc, data);
+
+    Serial.println(data);
+    Serial.println();
+
+    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
+    httpReply.send(data);
+}
+
+void sendPumpStatusToClient(WiFiClient &client) {
+    StaticJsonDocument<16> doc;
     String data;
     doc["pumpIsActive"] = pump.isActive();
-    doc["softwareVersion"] = VERSION;
-    doc["alarmHours"] = pAlarmData.hour;
-    doc["alarmMinutes"] = pAlarmData.minutes;
-    doc["alarmEnabled"] = pAlarmData.enabled;
-    doc["alarmValid"] = pAlarmData.valid;
-    doc["alarmId"] = pAlarmData.id;
+
+    serializeJsonPretty(doc, data);
+
+    Serial.println(data);
+    Serial.println();
+
+    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
+    httpReply.send(data);
+}
+
+void sendAlarmStatusToClient(WiFiClient &client) {
+    StaticJsonDocument<512> doc;
+    String data;
+    JsonArray alarms = doc.createNestedArray("alarms");
+    addAlarmsToJSONArray(alarms);
 
     serializeJsonPretty(doc, data);
 
@@ -227,10 +273,13 @@ void communicateWithClient(WiFiClient &client) {
 
             if (method == ArduinoHttpServer::Method::Get) {
                 if (endpoint == "/ps") {
+                    sendPumpStatusToClient(client);
+                } else if (endpoint == "/ss") {
                     sendStatusToClient(client);
-                    printAlarmStatus();
+                } else if (endpoint == "/as") {
+                    sendAlarmStatusToClient(client);
                 }
-                
+                printAlarmStatus();
             } else if(method == ArduinoHttpServer::Method::Post) {
                 if (endpoint == "/m") {
                     Serial.println(request.getBody());
@@ -239,42 +288,54 @@ void communicateWithClient(WiFiClient &client) {
                     deserializeJson(data, request.getBody());
 
                     if (data["isOn"]) {
-                        pump.on();
+                        turnPumpOn();
                     } else {
-                        pump.off();
+                        turnPumpOff();
                     }
 
                     ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
                     httpReply.send("OK");
                 } else if (endpoint == "/a") {
+                    Serial.println("remote client requests set alarm:");
                     Serial.println(request.getBody());
 
                     StaticJsonDocument<128> data;
                     deserializeJson(data, request.getBody());
                     bool alarmWasChanged = false;
 
-                    if (pAlarmData.hour != data["hours"]) {
-                        pAlarmData.hour = data["hours"];
-                        alarmWasChanged = true;
+                    byte id = data["id"];
+                    switch (id) {
+                        case 0:
+                            pAlarms.timer0.hour = data["hours"];
+                            pAlarms.timer0.minutes = data["minutes"];
+                            pAlarms.timer0.enabled = data["enabled"];
+                            pAlarms.timer0.valid = true;
+                            Serial.println("updating alarm 0");
+                            break;
+                        case 1:
+                            pAlarms.timer1.hour = data["hours"];
+                            pAlarms.timer1.minutes = data["minutes"];
+                            pAlarms.timer1.enabled = data["enabled"];
+                            pAlarms.timer1.valid = true;
+                            Serial.println("updating alarm 1");
+                            break;
+                        case 2:
+                            pAlarms.timer2.hour = data["hours"];
+                            pAlarms.timer2.minutes = data["minutes"];
+                            pAlarms.timer2.enabled = data["enabled"];
+                            pAlarms.timer2.valid = true;
+                            break;
+                        case 3:
+                            pAlarms.timer3.hour = data["hours"];
+                            pAlarms.timer3.minutes = data["minutes"];
+                            pAlarms.timer3.enabled = data["enabled"];
+                            pAlarms.timer3.valid = true;
+                            break;
                     }
                     
-                    if (pAlarmData.minutes != data["minutes"]) {
-                        pAlarmData.minutes = data["minutes"];
-                        alarmWasChanged = true;
-                    }
+                    alarmWasChanged = true;
                     
-                    if (pAlarmData.id != data["id"]) {
-                        alarmWasChanged = true;
-                        pAlarmData.id = data["id"];
-                    }
-
-                    if (pAlarmData.enabled != data["enabled"]) {
-                        alarmWasChanged = true;
-                        pAlarmData.enabled = data["enabled"];
-                    }
-
-                    // Save parameter data to flash memory if needed.
-                    saveAlarmParameterData(alarmWasChanged); 
+                    saveAlarms(alarmWasChanged);
 
                     ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
                     httpReply.send("OK");
@@ -305,23 +366,44 @@ void printWifiStatus() {
 
 void printAlarmStatus() {
     Serial.println("Current Alarm Status");
-    Serial.print("Daily Alarm Enabled: ");
-    if (!pAlarmData.enabled) {
-        Serial.println("No");
-        return;
-    }
-    Serial.println(pAlarmData.enabled);
-    Serial.print("Daily Alarm Set: ");
-    Serial.println(dailyAlarmIsSet);
-    Serial.print("Current Alarm Time: ");
-
-    byte newHours = pAlarmData.hour + 9;
-    if (newHours > 23) {newHours -= 24;}
-    Serial.print(newHours);
+    
+    Serial.println("Alarm 0");
+    Serial.print("Is Valid: ");
+    Serial.println(pAlarms.timer0.valid);
+    Serial.print("Is Enabled: ");
+    Serial.println(pAlarms.timer0.enabled);
+    Serial.print("Alarm Set: ");
+    Serial.print(pAlarms.timer0.hour);
     Serial.print(":");
+    Serial.println(pAlarms.timer0.minutes);
 
-    if (pAlarmData.minutes < 10) {
-        Serial.print(0);
-    }
-    Serial.println(pAlarmData.minutes);
+    Serial.println("Alarm 1");
+    Serial.print("Is Valid: ");
+    Serial.println(pAlarms.timer1.valid);
+    Serial.print("Is Enabled: ");
+    Serial.println(pAlarms.timer1.enabled);
+    Serial.print("Alarm Set: ");
+    Serial.print(pAlarms.timer1.hour);
+    Serial.print(":");
+    Serial.println(pAlarms.timer1.minutes);
+
+    Serial.println("Alarm 2");
+    Serial.print("Is Valid: ");
+    Serial.println(pAlarms.timer2.valid);
+    Serial.print("Is Enabled: ");
+    Serial.println(pAlarms.timer2.enabled);
+    Serial.print("Alarm Set: ");
+    Serial.print(pAlarms.timer2.hour);
+    Serial.print(":");
+    Serial.println(pAlarms.timer2.minutes);
+
+    Serial.println("Alarm 3");
+    Serial.print("Is Valid: ");
+    Serial.println(pAlarms.timer3.valid);
+    Serial.print("Is Enabled: ");
+    Serial.println(pAlarms.timer3.enabled);
+    Serial.print("Alarm Set: ");
+    Serial.print(pAlarms.timer3.hour);
+    Serial.print(":");
+    Serial.println(pAlarms.timer3.minutes);
 }
