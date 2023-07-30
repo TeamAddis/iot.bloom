@@ -10,6 +10,7 @@
             "includePath": [
                 "d:/Repositories/Celebi/include",
                 "d:/Repositories/Celebi/src",
+                "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SPI",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated-avr-comp",
                 "C:/Users/andrew/.platformio/packages/framework-cmsis/CMSIS/Include",
@@ -24,7 +25,6 @@
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SDU/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SFU/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SNU/src",
-                "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SPI",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SSU/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/USBHost/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/Wire",
@@ -35,6 +35,7 @@
                 "path": [
                     "d:/Repositories/Celebi/include",
                     "d:/Repositories/Celebi/src",
+                    "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SPI",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated-avr-comp",
                     "C:/Users/andrew/.platformio/packages/framework-cmsis/CMSIS/Include",
@@ -49,7 +50,6 @@
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SDU/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SFU/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SNU/src",
-                    "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SPI",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SSU/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/USBHost/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/Wire",
