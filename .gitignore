@@ -4,4 +4,4 @@
 .vscode/launch.json
 .vscode/ipch
 
-network_secrets.h
+*_secrets.h

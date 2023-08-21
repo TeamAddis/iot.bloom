@@ -1,5 +1,4 @@
 #include "Arduino.h"
-#include <ArduinoHttpClient.h>
 #include <WiFiNINA.h>
 #include "network_secrets.h"
 

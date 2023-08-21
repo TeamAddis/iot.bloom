@@ -13,12 +13,42 @@
 #include <RTCZero.h>
 #include <SPI.h>
 #include <ArduinoJson.h>
+#include <ArduinoBearSSL.h>
+#include <ArduinoECCX08.h>
+#include <ArduinoMqttClient.h>
 #include <WiFiNINA.h>
-#include <ArduinoHttpServer.h>
 #include "pump.h"
 #include "network_secrets.h"
-#include "discord.h"
+#include "aws_secrets.h"
+#include "mqtt_topics.h"
 #include "persistance.h"
+
+/* 
+ * Declare functions
+ */
+void printWifiStatus();
+void printAlarmStatus();
+void connectWifi();
+void connectMQTT();
+void setupRTC();
+void sendStatusToClient(WiFiClient &client);
+void sendPumpStatusToClient(WiFiClient &client);
+void sendAlarmStatusToClient(WiFiClient &client);
+void checkAlarms();
+void checkAlarmAgainstTime(p_alarmData &alarm);
+void turnPumpOn();
+void turnPumpOff();
+void onMessageReceived(int messageSize);
+unsigned long getTime();
+
+
+/*
+ * Secret data
+*/
+const char ssid[] = SECRET_SSID;        // your network SSID (name)
+const char pass[] = SECRET_PASS;        // your network password (use for WPA, or use as key for WEP)
+const char broker[] = SECRET_BROKER;    // MQTT broker ip address
+const char* certificate = SECRET_CERTIFICATE; // AWS certificate
 
 /* 
  * Pump variables
@@ -30,17 +60,17 @@ byte pumpOnStartMinutes;
  * RTC (Real time clock) variables
  */
 RTCZero rtc;
+bool rtcIsConfigured = false;
 bool dailyAlarmIsSet = false;
 byte currentDay = 0;
 
 /* 
- * Wifi variables
+ * Wifi
  */
-char ssid[] = SECRET_SSID;
-char pass[] = SECRET_PASS;
-
-int status = WL_IDLE_STATUS;
-WiFiServer server(80);
+WiFiClient client;            // Used for the TCP socket connection
+BearSSLClient sslClient(client); // Used for SSL/TLS connection, integrates with ECC508
+MqttClient mqttClient(sslClient);
+const int brokerPort = 8883;
 
 /* 
  * Software Version
@@ -55,18 +85,32 @@ const int VERSION = 1;
  */
 void setup() {
     Serial.begin(115200);
+    while (!Serial);
 
-    // Setup the wifi module.
-    setupWifi();
+    // Setup ECCX08
+    if (!ECCX08.begin()) {
+        Serial.println("No ECCX08 present!");
+        while (1);
+    }
 
-    // Configure the RTC
-    setupRTC();
+    // set a callback to get the current time
+    // used to validate the servers certificate
+    ArduinoBearSSL.onGetTime(getTime);
 
-    // Init the data storage Ids if needed
-    initAlarmIds();
+    // set the ECCX08 slot to use for the private key
+    // and the accompanying public certificate for it
+    sslClient.setEccSlot(0, certificate);
 
-    // Send message to discord confirming setup and connection to wifi
-    sendMessageToDiscord("Celebi connected to wifi and ready to water the garden.");
+    // set the message received callback for the mqtt client
+    mqttClient.onMessage(onMessageReceived);
+
+    // setup the wifi module
+    if (WiFi.status() == WL_NO_MODULE) {
+        Serial.println("Communication with WiFi module failed!");
+        // wifi module isn't responding.
+        // don't contintue
+        while (true);
+    }
 }
 
 /* 
@@ -76,33 +120,100 @@ void setup() {
  * 
  */
 void loop() {
-    WiFiClient client = server.available();
-
-    if (client) {
-        communicateWithClient(client);
-
-        if (client.connected()) {
-            client.stop();
-            Serial.println("remote client disconnected");
-        }
+    // check if the wifi module is connected to the network
+    if (WiFi.status() != WL_CONNECTED) {
+        connectWifi();
     }
 
-    // Check to see if any pumps are needing to be turned off.
-    // This is to ensure we never have pumps on more than 1 minute
-    // as a safety measure to prevent damage to the pump in the case
-    // we run the resivor dry.
-    if (pump.isActive()) {
-        if ((rtc.getMinutes() - pumpOnStartMinutes > 1) || (rtc.getMinutes() - pumpOnStartMinutes < 0)) {
+    if (!mqttClient.connected()) {
+    // MQTT client is disconnected, connect
+    connectMQTT();
+    }
+
+    // poll for new MQTT messages and send keep alive
+    mqttClient.poll();
+}
+
+unsigned long getTime() {
+  // get the current time from the WiFi module  
+  return WiFi.getTime();
+}
+
+/* 
+ * Connect to the wifi network
+ */
+void connectWifi() {
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(ssid);
+    Serial.println(" ");
+
+    while (WiFi.begin(ssid, pass) != WL_CONNECTED) {
+        // failed to connect to the network
+        // try again in 5 seconds
+        delay(5000);
+        Serial.println("Failed to connect to the network. Retrying...");
+    }
+    Serial.println();
+    Serial.println("Connected to the network.");
+    Serial.println();
+}
+
+/*
+ * Connect to the MQTT broker
+*/
+void connectMQTT() {
+  Serial.print("Attempting to MQTT broker: ");
+  Serial.print(broker);
+  Serial.println(" ");
+
+  while (!mqttClient.connect(broker, brokerPort)) {
+    // failed, retry
+    Serial.print("MQTT connection failed! Error code = ");
+    Serial.println(mqttClient.connectError());
+    delay(5000);
+  }
+  Serial.println();
+
+  Serial.println("You're connected to the MQTT broker");
+  Serial.println();
+
+  // subscribe to topics
+  mqttClient.subscribe(MANUAL_PUMP_TOPIC);
+}
+
+/*
+ * Receive message from MQTT Broker
+*/
+void onMessageReceived(int messageSize) {
+    // we received a message, store the topic and payload for later use.
+    String topic = mqttClient.messageTopic();
+    
+    // Create a JSON document based on the message contents
+    StaticJsonDocument<200> jsonDocument;
+    String jsonString = mqttClient.readString();
+    deserializeJson(jsonDocument, jsonString);
+
+    // we received a message, print out the topic and contents
+    Serial.print("Received a message with topic '");
+    Serial.print(topic);
+    Serial.print("', length ");
+    Serial.print(messageSize);
+    Serial.println(" bytes:");
+
+   
+    // Print the message
+    Serial.println(jsonString);
+    Serial.println();
+
+    Serial.println();
+
+    // Check the topic and perform the appropriate action
+    if (topic == MANUAL_PUMP_TOPIC) {
+        if (jsonDocument["message"] == "on") {
+            turnPumpOn();
+        } else if (jsonDocument["message"] == "off") {
             turnPumpOff();
-        } 
-    }
-
-    // Check if we have any enabled alarms
-    checkAlarms();
-
-    // Check if we lost connection to the internet and try to reconnect if we did.
-    if (status == WL_CONNECTION_LOST) {
-        setupWifi();
+        }
     }
 }
 
@@ -144,43 +255,9 @@ void checkAlarmAgainstTime(p_alarmData &alarm) {
 void turnPumpOn() {
     pump.on();
     pumpOnStartMinutes = rtc.getMinutes();
-    sendMessageToDiscord("Turning Pump on.");
 }
 void turnPumpOff() {
     pump.off();
-    sendMessageToDiscord("Turning Pump off.");
-}
-
-/* 
- * Setup the wifi chip
- */
-void setupWifi() {
-    if (WiFi.status() == WL_NO_MODULE) {
-        Serial.println("Communication with WiFi module failed!");
-        // wifi module isn't responding.
-        // don't contintue
-        while (true);
-    }
-
-    // Check the firmware version
-    String fv = WiFi.firmwareVersion();
-    if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
-        Serial.println("Please upgrade the firmware");
-    }
-
-    // attempt to connect to WiFi network:
-    while (status != WL_CONNECTED) {
-        Serial.print("Attempting to connect to Network named: ");
-        Serial.println(ssid);                   // print the network name (SSID);
-
-        status = WiFi.begin(ssid, pass);
-        
-        // wait 10 seconds for connection:
-        delay(10000);
-    }
-    server.begin();
-
-    printWifiStatus();
 }
 
 /* 
@@ -227,8 +304,6 @@ void sendStatusToClient(WiFiClient &client) {
     Serial.println(data);
     Serial.println();
 
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
-    httpReply.send(data);
 }
 
 void sendPumpStatusToClient(WiFiClient &client) {
@@ -241,8 +316,6 @@ void sendPumpStatusToClient(WiFiClient &client) {
     Serial.println(data);
     Serial.println();
 
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
-    httpReply.send(data);
 }
 
 void sendAlarmStatusToClient(WiFiClient &client) {
@@ -256,96 +329,7 @@ void sendAlarmStatusToClient(WiFiClient &client) {
     Serial.println(data);
     Serial.println();
 
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
-    httpReply.send(data);
 }
-
-/* 
- * Read from a connected client
- */
-void communicateWithClient(WiFiClient &client) {
-    if (client.connected()) {
-        ArduinoHttpServer::StreamHttpRequest<1024> request(client);
-        if (request.readRequest()) {
-            ArduinoHttpServer::Method method( ArduinoHttpServer::Method::Invalid );
-            method = request.getMethod();
-            String endpoint = request.getResource().toString();
-
-            if (method == ArduinoHttpServer::Method::Get) {
-                if (endpoint == "/ps") {
-                    sendPumpStatusToClient(client);
-                } else if (endpoint == "/ss") {
-                    sendStatusToClient(client);
-                } else if (endpoint == "/as") {
-                    sendAlarmStatusToClient(client);
-                }
-                printAlarmStatus();
-            } else if(method == ArduinoHttpServer::Method::Post) {
-                if (endpoint == "/m") {
-                    Serial.println(request.getBody());
-
-                    StaticJsonDocument<32> data;
-                    deserializeJson(data, request.getBody());
-
-                    if (data["isOn"]) {
-                        turnPumpOn();
-                    } else {
-                        turnPumpOff();
-                    }
-
-                    ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
-                    httpReply.send("OK");
-                } else if (endpoint == "/a") {
-                    Serial.println("remote client requests set alarm:");
-                    Serial.println(request.getBody());
-
-                    StaticJsonDocument<128> data;
-                    deserializeJson(data, request.getBody());
-                    bool alarmWasChanged = false;
-
-                    byte id = data["id"];
-                    switch (id) {
-                        case 0:
-                            pAlarms.timer0.hour = data["hours"];
-                            pAlarms.timer0.minutes = data["minutes"];
-                            pAlarms.timer0.enabled = data["enabled"];
-                            pAlarms.timer0.valid = true;
-                            Serial.println("updating alarm 0");
-                            break;
-                        case 1:
-                            pAlarms.timer1.hour = data["hours"];
-                            pAlarms.timer1.minutes = data["minutes"];
-                            pAlarms.timer1.enabled = data["enabled"];
-                            pAlarms.timer1.valid = true;
-                            Serial.println("updating alarm 1");
-                            break;
-                        case 2:
-                            pAlarms.timer2.hour = data["hours"];
-                            pAlarms.timer2.minutes = data["minutes"];
-                            pAlarms.timer2.enabled = data["enabled"];
-                            pAlarms.timer2.valid = true;
-                            break;
-                        case 3:
-                            pAlarms.timer3.hour = data["hours"];
-                            pAlarms.timer3.minutes = data["minutes"];
-                            pAlarms.timer3.enabled = data["enabled"];
-                            pAlarms.timer3.valid = true;
-                            break;
-                    }
-                    
-                    alarmWasChanged = true;
-                    
-                    saveAlarms(alarmWasChanged);
-
-                    ArduinoHttpServer::StreamHttpReply httpReply(client, request.getContentType());
-                    httpReply.send("OK");
-                }
-            }
-        }
-    }
-}
-
-
 
 void printWifiStatus() {
   // print the SSID of the network you're attached to:

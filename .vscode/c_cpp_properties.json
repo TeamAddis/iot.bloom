@@ -10,7 +10,15 @@
             "includePath": [
                 "d:/Repositories/Celebi/include",
                 "d:/Repositories/Celebi/src",
+                "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoMqttClient/src",
+                "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoBearSSL/src",
+                "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoECCX08/src",
+                "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/Wire",
+                "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/FlashStorage/src",
+                "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/WiFiNINA/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SPI",
+                "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoJson/src",
+                "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/RTCZero/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated-avr-comp",
                 "C:/Users/andrew/.platformio/packages/framework-cmsis/CMSIS/Include",
@@ -27,7 +35,6 @@
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SNU/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SSU/src",
                 "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/USBHost/src",
-                "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/Wire",
                 ""
             ],
             "browse": {
@@ -35,7 +42,15 @@
                 "path": [
                     "d:/Repositories/Celebi/include",
                     "d:/Repositories/Celebi/src",
+                    "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoMqttClient/src",
+                    "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoBearSSL/src",
+                    "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoECCX08/src",
+                    "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/Wire",
+                    "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/FlashStorage/src",
+                    "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/WiFiNINA/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SPI",
+                    "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/ArduinoJson/src",
+                    "d:/Repositories/Celebi/.pio/libdeps/mkrwifi1010/RTCZero/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/cores/arduino/api/deprecated-avr-comp",
                     "C:/Users/andrew/.platformio/packages/framework-cmsis/CMSIS/Include",
@@ -52,12 +67,11 @@
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SNU/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/SSU/src",
                     "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/USBHost/src",
-                    "C:/Users/andrew/.platformio/packages/framework-arduino-samd/libraries/Wire",
                     ""
                 ]
             },
             "defines": [
-                "PLATFORMIO=60109",
+                "PLATFORMIO=60110",
                 "ARDUINO_SAMD_MKRWIFI1010",
                 "__SAMD21G18A__",
                 "USE_BQ24195L_PMIC",
