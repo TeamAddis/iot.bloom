@@ -27,13 +27,9 @@
  * Declare functions
  */
 void printWifiStatus();
-void printAlarmStatus();
 void connectWifi();
 void connectMQTT();
 void setupRTC();
-void sendStatusToClient(WiFiClient &client);
-void sendPumpStatusToClient(WiFiClient &client);
-void sendAlarmStatusToClient(WiFiClient &client);
 void checkAlarms();
 void checkAlarmAgainstTime(p_alarmData &alarm);
 void turnPumpOn();
@@ -290,47 +286,6 @@ void setupRTC() {
     }
 }
 
-
-/* 
-* Send the connected client the server status
- */
-void sendStatusToClient(WiFiClient &client) {
-    StaticJsonDocument<16> doc;
-    String data;
-    doc["softwareVersion"] = VERSION;
-
-    serializeJsonPretty(doc, data);
-
-    Serial.println(data);
-    Serial.println();
-
-}
-
-void sendPumpStatusToClient(WiFiClient &client) {
-    StaticJsonDocument<16> doc;
-    String data;
-    doc["pumpIsActive"] = pump.isActive();
-
-    serializeJsonPretty(doc, data);
-
-    Serial.println(data);
-    Serial.println();
-
-}
-
-void sendAlarmStatusToClient(WiFiClient &client) {
-    StaticJsonDocument<512> doc;
-    String data;
-    JsonArray alarms = doc.createNestedArray("alarms");
-    addAlarmsToJSONArray(alarms);
-
-    serializeJsonPretty(doc, data);
-
-    Serial.println(data);
-    Serial.println();
-
-}
-
 void printWifiStatus() {
   // print the SSID of the network you're attached to:
   Serial.print("SSID: ");
@@ -346,48 +301,4 @@ void printWifiStatus() {
   Serial.print("signal strength (RSSI):");
   Serial.print(rssi);
   Serial.println(" dBm");
-}
-
-void printAlarmStatus() {
-    Serial.println("Current Alarm Status");
-    
-    Serial.println("Alarm 0");
-    Serial.print("Is Valid: ");
-    Serial.println(pAlarms.timer0.valid);
-    Serial.print("Is Enabled: ");
-    Serial.println(pAlarms.timer0.enabled);
-    Serial.print("Alarm Set: ");
-    Serial.print(pAlarms.timer0.hour);
-    Serial.print(":");
-    Serial.println(pAlarms.timer0.minutes);
-
-    Serial.println("Alarm 1");
-    Serial.print("Is Valid: ");
-    Serial.println(pAlarms.timer1.valid);
-    Serial.print("Is Enabled: ");
-    Serial.println(pAlarms.timer1.enabled);
-    Serial.print("Alarm Set: ");
-    Serial.print(pAlarms.timer1.hour);
-    Serial.print(":");
-    Serial.println(pAlarms.timer1.minutes);
-
-    Serial.println("Alarm 2");
-    Serial.print("Is Valid: ");
-    Serial.println(pAlarms.timer2.valid);
-    Serial.print("Is Enabled: ");
-    Serial.println(pAlarms.timer2.enabled);
-    Serial.print("Alarm Set: ");
-    Serial.print(pAlarms.timer2.hour);
-    Serial.print(":");
-    Serial.println(pAlarms.timer2.minutes);
-
-    Serial.println("Alarm 3");
-    Serial.print("Is Valid: ");
-    Serial.println(pAlarms.timer3.valid);
-    Serial.print("Is Enabled: ");
-    Serial.println(pAlarms.timer3.enabled);
-    Serial.print("Alarm Set: ");
-    Serial.print(pAlarms.timer3.hour);
-    Serial.print(":");
-    Serial.println(pAlarms.timer3.minutes);
 }

@@ -71,7 +71,7 @@
                 ]
             },
             "defines": [
-                "PLATFORMIO=60110",
+                "PLATFORMIO=60114",
                 "ARDUINO_SAMD_MKRWIFI1010",
                 "__SAMD21G18A__",
                 "USE_BQ24195L_PMIC",
