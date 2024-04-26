@@ -14,4 +14,4 @@ Interface and manage Bloom IoT from the [Bloom iOS App](https://github.com/TeamA
 - 12v DC Submersible Pump
 
 ## Prototype Drawing
-![alt text](https://github.com/TeamAddis/Celebi/blob/main/drawings/Celebi_schem.png)
+![alt text](https://github.com/TeamAddis/iot.bloom/blob/main/drawings/Celebi_schem.png)
