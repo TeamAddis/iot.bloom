@@ -1,7 +1,8 @@
-# Celebi
-Smart Garden Watering System
+# Bloom IoT
 
-Connect to the server via [iOS Celebi Gardener App](https://github.com/TeamAddis/Celibi-App)
+IoT Garden Watering System
+
+Interface and manage Bloom IoT from the [Bloom iOS App](https://github.com/TeamAddis/ios.bloom)
 
 ## Component List
 
