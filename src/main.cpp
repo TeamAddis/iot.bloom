@@ -1,5 +1,5 @@
 /* 
- * Celebi Smart watering system
+ * Bloom IoT garden
  *
  * Parts:
  * Arduino MKR WIFI 1010
