@@ -1,7 +1,8 @@
-# Celebi
-Smart Garden Watering System
+# Bloom IoT
 
-Connect to the server via [iOS Celebi Gardener App](https://github.com/TeamAddis/Celibi-App)
+IoT Garden Watering System
+
+Interface and manage Bloom IoT from the [Bloom iOS App](https://github.com/TeamAddis/ios.bloom)
 
 ## Component List
 
@@ -13,4 +14,4 @@ Connect to the server via [iOS Celebi Gardener App](https://github.com/TeamAddis
 - 12v DC Submersible Pump
 
 ## Prototype Drawing
-![alt text](https://github.com/TeamAddis/Celebi/blob/main/drawings/Celebi_schem.png)
+![](https://github.com/TeamAddis/iot.bloom/blob/main/architecture/Celebi_schem.png)
