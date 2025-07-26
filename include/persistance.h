@@ -7,60 +7,27 @@
  *  The "valid" variable is set to "true" once the structure is
  *  filled with actual data for the first time.
  */
-typedef struct {
-    byte id = 0;
-    bool valid = false;
-    bool enabled = false;
-    byte hour;
-    byte minutes;
-} p_alarmData;
+struct Alarm {
+    bool valid = false;       // Whether the alarm is valid
+    bool enabled = false;     // Whether the alarm is enabled
+    byte hour;                // Hour of the alarm (24-hour format)
+    byte minute;              // Minute of the alarm
+
+    // Constructor
+    Alarm(bool v = false, bool e = false, byte h = 0, byte m = 0)
+        : valid(v), enabled(e), hour(h), minute(m) {}
+};
 
 typedef struct {
-    p_alarmData timer0;
-    p_alarmData timer1;
-    p_alarmData timer2;
-    p_alarmData timer3;
-    bool wasInit = false;
-} p_timers;
+    Alarm alarms[4];          // Support up to 4 alarms
+    unsigned long maxPumpRuntime; // in milliseconds
+} AlarmStorage;
 
-FlashStorage(alarm_storage, p_timers);
-p_timers pAlarms = alarm_storage.read();
+FlashStorage(alarmStorage, AlarmStorage);
+AlarmStorage alarmData = alarmStorage.read();
 
-bool areActiveAlarms() {
-    return (pAlarms.timer0.enabled || pAlarms.timer1.enabled ||
-        pAlarms.timer2.enabled || pAlarms.timer3.enabled);
-}
 
-void addAlarmsToJSONArray(JsonArray &alarms) {
-    if (pAlarms.timer0.valid) {
-        JsonObject alarm = alarms.createNestedObject();
-        alarm["hours"] = pAlarms.timer0.hour;
-        alarm["minutes"] = pAlarms.timer0.minutes;
-        alarm["enabled"] = pAlarms.timer0.enabled;
-        alarm["id"] = pAlarms.timer0.id;
-    } 
-    if (pAlarms.timer1.valid) {
-        JsonObject alarm = alarms.createNestedObject();
-        alarm["hours"] = pAlarms.timer1.hour;
-        alarm["minutes"] = pAlarms.timer1.minutes;
-        alarm["enabled"] = pAlarms.timer1.enabled;
-        alarm["id"] = pAlarms.timer1.id;
-    }
-    if (pAlarms.timer2.valid) {
-        JsonObject alarm = alarms.createNestedObject();
-        alarm["hours"] = pAlarms.timer2.hour;
-        alarm["minutes"] = pAlarms.timer2.minutes;
-        alarm["enabled"] = pAlarms.timer2.enabled;
-        alarm["id"] = pAlarms.timer2.id;
-    }
-    if (pAlarms.timer3.valid) {
-        JsonObject alarm = alarms.createNestedObject();
-        alarm["hours"] = pAlarms.timer3.hour;
-        alarm["minutes"] = pAlarms.timer3.minutes;
-        alarm["enabled"] = pAlarms.timer3.enabled;
-        alarm["id"] = pAlarms.timer3.id;
-    }
-}
+
 
 // Save the alarm information that we receive from remote client
 //
@@ -74,20 +41,52 @@ void addAlarmsToJSONArray(JsonArray &alarms) {
 //         Serial.println("Alarm time is same in Flash, no need to perform write.");
 //     }
 // }
-void saveAlarms(bool dataWasChanged) {
-   if (dataWasChanged) {
-       alarm_storage.write(pAlarms);
-   } else {
-       Serial.println("Alarm times is same in Flash, no need to perform write.");
-   }
+void saveAlarms() {
+    alarmStorage.write(alarmData);
+    Serial.println("Alarms saved to flash.");
 }
 
-void initAlarmIds() {
-    if (pAlarms.wasInit) {return;}
-    pAlarms.timer0.id = 0;
-    pAlarms.timer1.id = 1;
-    pAlarms.timer2.id = 2;
-    pAlarms.timer3.id = 3;
-    pAlarms.wasInit = true;
-    saveAlarms(true);
+void loadAlarms() {
+    alarmData = alarmStorage.read();
+    Serial.println("Alarms loaded from flash.");
+}
+
+void setDefaultAlarms() {
+    bool allInvalid = true;
+
+    // Check if all alarms are invalid
+    for (int i = 0; i < 4; i++) {
+        if (alarmData.alarms[i].valid) {
+            allInvalid = false;
+            break;
+        }
+    }
+
+    // If all alarms are invalid, set default values
+    if (allInvalid) {
+        Serial.println("No valid alarms found. Setting default alarms...");
+
+        alarmData.alarms[0] = { true, true, 6, 0 };    // Default alarm 1: 6:00 AM, enabled
+        alarmData.alarms[1] = { true, true, 17, 0 };   // Default alarm 2: 5:00 PM, enabled
+        alarmData.alarms[2] = { true, false, 0, 0 }; 
+        alarmData.alarms[3] = { true, false, 0, 0 }; 
+
+        saveAlarms(); // Save the default alarms to flash
+
+        // Debug: Print the default alarms
+        for (int i = 0; i < 4; i++) {
+            Serial.print("Default Alarm ");
+            Serial.print(i);
+            Serial.print(": hour=");
+            Serial.print(alarmData.alarms[i].hour);
+            Serial.print(", minute=");
+            Serial.print(alarmData.alarms[i].minute);
+            Serial.print(", enabled=");
+            Serial.print(alarmData.alarms[i].enabled);
+            Serial.print(", valid=");
+            Serial.println(alarmData.alarms[i].valid);
+        }
+    } else {
+        Serial.println("Valid alarms found. Skipping default alarm setup.");
+    }
 }

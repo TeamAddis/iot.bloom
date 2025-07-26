@@ -10,10 +10,12 @@ void Pump::on() {
     Serial.println("Turning Pump on.");
     digitalWrite(mPin, HIGH);
     mIsActive = true;
+    mStartTime = millis();
 }
 
 void Pump::off() {
     Serial.println("Turning Pump off.");
     digitalWrite(mPin, LOW);
     mIsActive = false;
+    mStartTime = 0;
 }
