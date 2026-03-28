@@ -13,13 +13,18 @@
 #include <RTCZero.h>
 #include <SPI.h>
 #include <ArduinoJson.h>
-#include <ArduinoBearSSL.h>
 #include <ArduinoECCX08.h>
 #include <ArduinoMqttClient.h>
 #include <WiFiNINA.h>
 #include "pump.h"
 #include "network_secrets.h"
+#include "mqtt_mode.h"
+#if BLOOM_MQTT_USE_AWS
+#include <ArduinoBearSSL.h>
 #include "aws_secrets.h"
+#else
+#include "mqtt_secrets.h"
+#endif
 #include "mqtt_topics.h"
 #include "persistance.h"
 
@@ -33,7 +38,9 @@ void setupRTC();
 void turnPumpOn();
 void turnPumpOff();
 void onMessageReceived(int messageSize);
+#if BLOOM_MQTT_USE_AWS
 unsigned long getTime();
+#endif
 void sendPumpStatus();
 void sendMCUStatus();
 void checkAlarms();
@@ -46,7 +53,12 @@ void sendAlarmStatus();
 const char ssid[] = SECRET_SSID;        // your network SSID (name)
 const char pass[] = SECRET_PASS;        // your network password (use for WPA, or use as key for WEP)
 const char broker[] = SECRET_BROKER;    // MQTT broker ip address
+#if BLOOM_MQTT_USE_AWS
 const char* certificate = SECRET_CERTIFICATE; // AWS certificate
+#else
+const char mqttUsername[] = SECRET_MQTT_USERNAME;
+const char mqttPassword[] = SECRET_MQTT_PASSWORD;
+#endif
 
 /* 
  * Pump variables
@@ -68,9 +80,14 @@ byte currentDay = 0;
  * Wifi
  */
 WiFiClient client;            // Used for the TCP socket connection
+#if BLOOM_MQTT_USE_AWS
 BearSSLClient sslClient(client); // Used for SSL/TLS connection, integrates with ECC508
 MqttClient mqttClient(sslClient);
 const int brokerPort = 8883;
+#else
+MqttClient mqttClient(client);
+const int brokerPort = SECRET_MQTT_PORT;
+#endif
 
 /* 
  * Software Version
@@ -101,13 +118,11 @@ void setup() {
         while (1);
     }
 
-    // set a callback to get the current time
-    // used to validate the servers certificate
+#if BLOOM_MQTT_USE_AWS
+    // AWS mode: validate server certificate time and use ECC slot cert.
     ArduinoBearSSL.onGetTime(getTime);
-
-    // set the ECCX08 slot to use for the private key
-    // and the accompanying public certificate for it
     sslClient.setEccSlot(0, certificate);
+#endif
 
     // set the message received callback for the mqtt client
     mqttClient.onMessage(onMessageReceived);
@@ -195,10 +210,12 @@ void checkAlarms() {
     }
 }
 
+#if BLOOM_MQTT_USE_AWS
 unsigned long getTime() {
-  // get the current time from the WiFi module  
-  return WiFi.getTime();
+    // Get the current UTC epoch for TLS certificate validation.
+    return WiFi.getTime();
 }
+#endif
 
 /* 
  * Connect to the wifi network
@@ -226,6 +243,10 @@ void connectMQTT() {
     Serial.print("Attempting to MQTT broker: ");
     Serial.print(broker);
     Serial.println(" ");
+
+#if !BLOOM_MQTT_USE_AWS
+    mqttClient.setUsernamePassword(mqttUsername, mqttPassword);
+#endif
 
     while (!mqttClient.connect(broker, brokerPort)) {
         // failed, retry
